@@ -72,7 +72,7 @@ def build_svg(svg: str, foreground: str, background: str | None, padding: float)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Render an SVG icon to a PNG suitable for Windows toast IconUri.")
+    parser = argparse.ArgumentParser(description="Render an SVG icon to a PNG suitable for the overlay window.")
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--size", type=int, default=256)

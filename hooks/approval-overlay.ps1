@@ -136,6 +136,21 @@ function New-StateCard {
   return $card
 }
 
+function Invoke-OverlaySound {
+  param([int]$NewStateCount = 1)
+
+  try {
+    if ($Kind -eq "session") {
+      [System.Media.SystemSounds]::Asterisk.Play()
+    } else {
+      [System.Media.SystemSounds]::Exclamation.Play()
+    }
+    Write-OverlayLog "sound played kind=$Kind newStates=$NewStateCount"
+  } catch {
+    Write-OverlayLog "sound failed kind=${Kind}: $($_.Exception.Message)"
+  }
+}
+
 $mutexName = Get-StateDirMutexName -Path $StateDir
 $createdNew = $false
 $mutex = New-Object Threading.Mutex($true, $mutexName, [ref]$createdNew)
@@ -204,6 +219,7 @@ try {
 
   $lastNonEmpty = Get-Date
   $lastStateKey = ""
+  $seenStateIds = @{}
 
   function Move-OverlayWindow {
     $workArea = [Windows.SystemParameters]::WorkArea
@@ -234,6 +250,19 @@ try {
 
     $script:lastNonEmpty = Get-Date
     $stateKey = ($states | ForEach-Object { $_.NotificationId }) -join "|"
+    $newStateCount = 0
+    foreach ($state in $states) {
+      $notificationId = [string]$state.NotificationId
+      if ($notificationId -and -not $script:seenStateIds.ContainsKey($notificationId)) {
+        $script:seenStateIds[$notificationId] = $true
+        $newStateCount += 1
+      }
+    }
+
+    if ($newStateCount -gt 0) {
+      Invoke-OverlaySound -NewStateCount $newStateCount
+    }
+
     if ($stateKey -eq $script:lastStateKey -and $window.IsVisible) {
       Move-OverlayWindow
       return

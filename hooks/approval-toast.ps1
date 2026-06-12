@@ -6,19 +6,13 @@ param(
 $approvalNotificationPrefix = "codex-approval"
 $sessionEndNotificationPrefix = "codex-session-end"
 $legacyApprovalNotificationId = "codex-approval"
-$legacySessionEndNotificationId = "codex-session-end"
 $debugPath = Join-Path $env:TEMP "codex-approval-toast-debug.log"
-$appId = "OpenAI.Codex.ApprovalToast"
-$appName = "Codex"
-$appRegistryPath = "HKCU:\Software\Classes\AppUserModelId\$appId"
-$appIconPath = Join-Path $env:LOCALAPPDATA "CodexApprovalToast\Icon.png"
-$bundledIconPath = Join-Path $PSScriptRoot "codex-approval-toast-icon.png"
 $overlayPath = Join-Path $PSScriptRoot "approval-overlay.ps1"
+$overlayIconPath = Join-Path $PSScriptRoot "codex-approval-toast-icon.png"
 $stateDir = Join-Path $PSScriptRoot "approval-toast-active"
 $sessionStateDir = Join-Path $PSScriptRoot "session-toast-active"
 $legacyStatePath = Join-Path $PSScriptRoot "approval-toast-active.json"
 $configPath = Join-Path $PSScriptRoot "approval-toast-config.json"
-$shortcutPath = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Codex.lnk"
 
 function Get-LoggingEnabled {
   try {
@@ -75,7 +69,7 @@ function Start-ApprovalOverlay {
       "-LogPath",
       $debugPath,
       "-IconPath",
-      $appIconPath,
+      $overlayIconPath,
       "-Kind",
       $Kind
     )
@@ -87,328 +81,6 @@ function Start-ApprovalOverlay {
   }
 }
 
-function Set-ToastAppIdentity {
-  try {
-    if (-not ([System.Management.Automation.PSTypeName]"CodexToastAppIdentityV2").Type) {
-      Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-
-public static class CodexToastAppIdentityV2 {
-  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
-  public static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
-
-  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
-  public static extern int GetCurrentProcessExplicitAppUserModelID(out IntPtr appId);
-
-  [DllImport("ole32.dll", PreserveSig = true)]
-  public static extern void CoTaskMemFree(IntPtr ptr);
-}
-"@ -ErrorAction Stop
-    }
-
-    $setHr = [CodexToastAppIdentityV2]::SetCurrentProcessExplicitAppUserModelID($appId)
-    $currentPtr = [IntPtr]::Zero
-    $getHr = [CodexToastAppIdentityV2]::GetCurrentProcessExplicitAppUserModelID([ref]$currentPtr)
-    $currentAppId = ""
-    if ($currentPtr -ne [IntPtr]::Zero) {
-      $currentAppId = [Runtime.InteropServices.Marshal]::PtrToStringUni($currentPtr)
-      [CodexToastAppIdentityV2]::CoTaskMemFree($currentPtr)
-    }
-
-    Write-DebugLog "app identity setHr=$setHr getHr=$getHr requested=$appId current=$currentAppId"
-  } catch {
-    Write-DebugLog "appid failed: $($_.Exception.Message)"
-  }
-}
-
-function Write-EnvironmentDiagnostics {
-  try {
-    $process = Get-Process -Id $PID -ErrorAction SilentlyContinue
-    Write-DebugLog "env pid=$PID process=$($process.ProcessName) path=$($process.Path) ps=$PSHOME shortcutPath=$shortcutPath"
-  } catch {
-    Write-DebugLog "env diag failed: $($_.Exception.Message)"
-  }
-}
-
-function Write-ShortcutDiagnostics {
-  try {
-    if (-not (Test-Path $shortcutPath)) {
-      Write-DebugLog "shortcut missing path=$shortcutPath"
-      return
-    }
-
-    $wsh = New-Object -ComObject WScript.Shell
-    $shortcut = $wsh.CreateShortcut($shortcutPath)
-
-    $folderPath = Split-Path -Parent $shortcutPath
-    $fileName = Split-Path -Leaf $shortcutPath
-    $shell = New-Object -ComObject Shell.Application
-    $folder = $shell.Namespace($folderPath)
-    $item = $folder.ParseName($fileName)
-    $shortcutAppId = $item.ExtendedProperty("System.AppUserModel.ID")
-    $relaunchCommand = $item.ExtendedProperty("System.AppUserModel.RelaunchCommand")
-    $relaunchName = $item.ExtendedProperty("System.AppUserModel.RelaunchDisplayNameResource")
-    $relaunchIcon = $item.ExtendedProperty("System.AppUserModel.RelaunchIconResource")
-
-    Write-DebugLog "shortcut exists target=$($shortcut.TargetPath) args=$($shortcut.Arguments) icon=$($shortcut.IconLocation) appid=$shortcutAppId relaunchCommand=$relaunchCommand relaunchName=$relaunchName relaunchIcon=$relaunchIcon"
-  } catch {
-    Write-DebugLog "shortcut diag failed: $($_.Exception.Message)"
-  }
-}
-
-function Ensure-ToastIcon {
-  try {
-    $iconDir = Split-Path -Parent $appIconPath
-    New-Item -ItemType Directory -Path $iconDir -Force | Out-Null
-
-    if (Test-Path $bundledIconPath) {
-      Copy-Item -Path $bundledIconPath -Destination $appIconPath -Force
-      Write-DebugLog "icon copied source=$bundledIconPath path=$appIconPath"
-      return
-    }
-
-    if (Test-Path $appIconPath) {
-      Write-DebugLog "icon source missing, keeping existing path=$appIconPath"
-    } else {
-      Write-DebugLog "icon source missing path=$bundledIconPath"
-    }
-  } catch {
-    Write-DebugLog "icon create failed: $($_.Exception.Message)"
-  }
-}
-
-function Ensure-ToastAppRegistration {
-  try {
-    New-Item -Path $appRegistryPath -Force | Out-Null
-    Ensure-ToastIcon
-
-    New-ItemProperty -Path $appRegistryPath -Name DisplayName -Value $appName -PropertyType String -Force | Out-Null
-    if (Test-Path $appIconPath) {
-      New-ItemProperty -Path $appRegistryPath -Name IconUri -Value $appIconPath -PropertyType String -Force | Out-Null
-      New-ItemProperty -Path $appRegistryPath -Name IconBackgroundColor -Value "FF111827" -PropertyType String -Force | Out-Null
-    }
-
-    Write-DebugLog "app registration ensured path=$appRegistryPath displayName=$appName icon=$appIconPath"
-  } catch {
-    Write-DebugLog "app registration failed: $($_.Exception.Message)"
-  }
-}
-
-function Write-AppRegistrationDiagnostics {
-  try {
-    $props = Get-ItemProperty -Path $appRegistryPath -ErrorAction Stop
-    Write-DebugLog "app registration displayName=$($props.DisplayName) iconUri=$($props.IconUri) iconBackground=$($props.IconBackgroundColor) customActivator=$($props.CustomActivator)"
-  } catch {
-    Write-DebugLog "app registration diag failed: $($_.Exception.Message)"
-  }
-}
-
-function Get-ShortcutAppId {
-  try {
-    if (-not (Test-Path $shortcutPath)) {
-      return ""
-    }
-
-    $folderPath = Split-Path -Parent $shortcutPath
-    $fileName = Split-Path -Leaf $shortcutPath
-    $shell = New-Object -ComObject Shell.Application
-    $folder = $shell.Namespace($folderPath)
-    $item = $folder.ParseName($fileName)
-    return [string]$item.ExtendedProperty("System.AppUserModel.ID")
-  } catch {
-    Write-DebugLog "shortcut appid read failed: $($_.Exception.Message)"
-    return ""
-  }
-}
-
-function Install-ToastShortcut {
-  try {
-    if (-not ([System.Management.Automation.PSTypeName]"CodexToastShortcutInstallerV1").Type) {
-      Add-Type -TypeDefinition @"
-using System;
-using System.Text;
-using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
-
-[ComImport]
-[Guid("00021401-0000-0000-C000-000000000046")]
-public class ShellLink {}
-
-[ComImport]
-[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-[Guid("000214F9-0000-0000-C000-000000000046")]
-public interface IShellLinkW {
-  void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, IntPtr pfd, uint fFlags);
-  void GetIDList(out IntPtr ppidl);
-  void SetIDList(IntPtr pidl);
-  void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cchMaxName);
-  void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
-  void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cchMaxPath);
-  void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
-  void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cchMaxPath);
-  void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
-  void GetHotkey(out short pwHotkey);
-  void SetHotkey(short wHotkey);
-  void GetShowCmd(out int piShowCmd);
-  void SetShowCmd(int iShowCmd);
-  void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cchIconPath, out int piIcon);
-  void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
-  void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, uint dwReserved);
-  void Resolve(IntPtr hwnd, uint fFlags);
-  void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
-}
-
-[ComImport]
-[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-[Guid("00000138-0000-0000-C000-000000000046")]
-public interface IPropertyStore {
-  void GetCount(out uint cProps);
-  void GetAt(uint iProp, out PropertyKey pkey);
-  void GetValue(ref PropertyKey key, out PropVariant pv);
-  void SetValue(ref PropertyKey key, ref PropVariant pv);
-  void Commit();
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 4)]
-public struct PropertyKey {
-  public Guid fmtid;
-  public uint pid;
-
-  public PropertyKey(Guid fmtid, uint pid) {
-    this.fmtid = fmtid;
-    this.pid = pid;
-  }
-}
-
-[StructLayout(LayoutKind.Sequential)]
-public struct PropVariant {
-  public ushort vt;
-  public ushort wReserved1;
-  public ushort wReserved2;
-  public ushort wReserved3;
-  public IntPtr p;
-
-  public static PropVariant FromString(string value) {
-    PropVariant variant = new PropVariant();
-    variant.vt = 31;
-    variant.p = Marshal.StringToCoTaskMemUni(value);
-    return variant;
-  }
-}
-
-public static class CodexToastShortcutInstallerV1 {
-  [DllImport("ole32.dll", PreserveSig = true)]
-  private static extern int PropVariantClear(ref PropVariant pvar);
-
-  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
-  private static extern int SHGetPropertyStoreFromParsingName(
-    [MarshalAs(UnmanagedType.LPWStr)] string path,
-    IntPtr bindContext,
-    uint flags,
-    ref Guid riid,
-    out IntPtr propertyStore);
-
-  public static void Install(string shortcutPath, string targetPath, string arguments, string iconPath, int iconIndex, string appId) {
-    object shellLinkObject = new ShellLink();
-    string step = "start";
-    try {
-      step = "create shell link";
-      IShellLinkW shellLink = (IShellLinkW)shellLinkObject;
-      shellLink.SetPath(targetPath);
-      shellLink.SetArguments(arguments ?? "");
-      shellLink.SetDescription("Codex");
-      shellLink.SetIconLocation(iconPath, iconIndex);
-
-      step = "save shortcut";
-      IPersistFile file = (IPersistFile)shellLinkObject;
-      file.Save(shortcutPath, true);
-
-      step = "open property store";
-      Guid propertyStoreGuid = new Guid("00000138-0000-0000-C000-000000000046");
-      IntPtr propertyStorePtr = IntPtr.Zero;
-      int hr = SHGetPropertyStoreFromParsingName(shortcutPath, IntPtr.Zero, 2, ref propertyStoreGuid, out propertyStorePtr);
-      if (hr != 0) {
-        Marshal.ThrowExceptionForHR(hr);
-      }
-
-      step = "marshal property store";
-      IPropertyStore propertyStore = (IPropertyStore)Marshal.GetObjectForIUnknown(propertyStorePtr);
-      PropertyKey appIdKey = new PropertyKey(
-        new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"),
-        5);
-      PropVariant appIdValue = PropVariant.FromString(appId);
-      try {
-        step = "set appid";
-        propertyStore.SetValue(ref appIdKey, ref appIdValue);
-        step = "commit appid";
-        propertyStore.Commit();
-      } finally {
-        PropVariantClear(ref appIdValue);
-        if (propertyStore != null) {
-          Marshal.FinalReleaseComObject(propertyStore);
-        }
-        if (propertyStorePtr != IntPtr.Zero) {
-          Marshal.Release(propertyStorePtr);
-        }
-      }
-    } catch (Exception ex) {
-      throw new InvalidOperationException("shortcut install step=" + step + " failed: " + ex.Message, ex);
-    } finally {
-      if (shellLinkObject != null) {
-        Marshal.FinalReleaseComObject(shellLinkObject);
-      }
-    }
-  }
-}
-"@ -ErrorAction Stop
-    }
-
-    $shortcutDir = Split-Path -Parent $shortcutPath
-    New-Item -ItemType Directory -Path $shortcutDir -Force | Out-Null
-
-    $targetPath = Join-Path $PSHOME "powershell.exe"
-    $arguments = "-NoProfile"
-    $iconPath = Join-Path $env:SystemRoot "System32\shell32.dll"
-    [CodexToastShortcutInstallerV1]::Install($shortcutPath, $targetPath, $arguments, $iconPath, 44, $appId)
-    Write-DebugLog "shortcut installed path=$shortcutPath target=$targetPath appid=$appId icon=$iconPath,44"
-  } catch {
-    Write-DebugLog "shortcut install failed: $($_.Exception.ToString())"
-  }
-}
-
-function Ensure-ToastShortcut {
-  $currentShortcutAppId = Get-ShortcutAppId
-  if ($currentShortcutAppId -ne $appId) {
-    Write-DebugLog "shortcut appid mismatch expected=$appId actual=$currentShortcutAppId"
-    Install-ToastShortcut
-  }
-}
-
-function ConvertTo-ToastXmlText {
-  param([string]$Value)
-  return [System.Security.SecurityElement]::Escape($Value)
-}
-
-function New-ApprovalToastXml {
-  param([string[]]$Text)
-
-  $textXml = ($Text | ForEach-Object {
-    "      <text>$((ConvertTo-ToastXmlText $_))</text>"
-  }) -join "`n"
-
-  return @"
-<toast duration="long" scenario="reminder">
-  <visual>
-    <binding template="ToastGeneric">
-$textXml
-    </binding>
-  </visual>
-  <audio src="ms-winsoundevent:Notification.Reminder" />
-</toast>
-"@
-}
-
 function Normalize-ApprovalCommand {
   param([string]$Command)
   if (-not $Command) {
@@ -418,7 +90,7 @@ function Normalize-ApprovalCommand {
   return ($Command -replace '\s+', ' ').Trim()
 }
 
-function New-ToastNotificationId {
+function New-NotificationId {
   param([string]$Prefix)
 
   $timestamp = (Get-Date).ToString("yyyyMMddHHmmssfff")
@@ -429,67 +101,6 @@ function New-ToastNotificationId {
 function Get-ApprovalStatePath {
   param([string]$NotificationId)
   return (Join-Path $stateDir "$NotificationId.json")
-}
-
-function Submit-ApprovalToast {
-  param(
-    [string[]]$Text,
-    [string]$NotificationId
-  )
-
-  try {
-    [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-    [Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-    [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-
-    $toastXml = New-ApprovalToastXml -Text $Text
-    Write-DebugLog "direct submit attempt appid=$appId xml=$($toastXml -replace '\s+', ' ')"
-
-    $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-    $xml.LoadXml($toastXml)
-
-    $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-    $toast.Tag = $NotificationId
-    $toast.Group = $NotificationId
-
-    $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId)
-    $notifier.Show($toast)
-    Write-DebugLog "direct submit appid=$appId id=$NotificationId"
-    return $true
-  } catch {
-    Write-DebugLog "direct submit failed: $($_.Exception.Message)"
-    return $false
-  }
-}
-
-function Clear-ApprovalToast {
-  param([string[]]$NotificationIds)
-
-  if (-not $NotificationIds -or $NotificationIds.Count -eq 0) {
-    return
-  }
-
-  try {
-    [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-    foreach ($notificationId in $NotificationIds) {
-      [Windows.UI.Notifications.ToastNotificationManager]::History.Remove($notificationId, $notificationId, $appId)
-    }
-    Write-DebugLog "direct clear appid=$appId ids=$($NotificationIds -join ',')"
-  } catch {
-    Write-DebugLog "direct clear failed: $($_.Exception.Message)"
-  }
-
-  try {
-    Import-Module BurntToast -ErrorAction SilentlyContinue
-    foreach ($notificationId in $NotificationIds) {
-      Remove-BTNotification -UniqueIdentifier $notificationId -ErrorAction SilentlyContinue
-      try {
-        Remove-BTNotification -Tag $notificationId -Group $notificationId -ErrorAction SilentlyContinue
-      } catch {}
-    }
-  } catch {
-    Write-DebugLog "clear failed: $($_.Exception.Message)"
-  }
 }
 
 function Get-ApprovalStates {
@@ -620,7 +231,7 @@ function Write-SessionState {
     Get-ChildItem -Path $sessionStateDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
       Remove-Item -Force -ErrorAction SilentlyContinue
 
-    $sessionNotificationId = New-ToastNotificationId -Prefix $sessionEndNotificationPrefix
+    $sessionNotificationId = New-NotificationId -Prefix $sessionEndNotificationPrefix
     $statePath = Join-Path $sessionStateDir "$sessionNotificationId.json"
     $state = @{
       notification_id = $sessionNotificationId
@@ -777,7 +388,6 @@ if ($Clear) {
   }
 
   $context = Get-HookContext -InputJson $inputJson
-  Set-ToastAppIdentity
   Write-DebugLog "clear requested tool=$($context.Tool) cwd=$($context.Cwd) command=$(Normalize-ApprovalCommand -Command $context.Command)"
 
   $states = @(Get-ApprovalStates)
@@ -786,22 +396,13 @@ if ($Clear) {
     -Tool $context.Tool `
     -Cwd $context.Cwd `
     -Command $context.Command)
-  $notificationIds = @($statesToClear | ForEach-Object { [string]$_.notification_id } | Where-Object { $_ })
 
-  Clear-ApprovalToast -NotificationIds $notificationIds
   Remove-ApprovalStates -States $statesToClear
   if (Test-ApprovalState) {
     Start-ApprovalOverlay
   }
   exit 0
 }
-
-Set-ToastAppIdentity
-
-Write-EnvironmentDiagnostics
-Ensure-ToastAppRegistration
-Write-AppRegistrationDiagnostics
-Write-ShortcutDiagnostics
 
 $inputJson = [Console]::In.ReadToEnd()
 Write-DebugLog "payload=$inputJson"
@@ -817,7 +418,7 @@ if ($SessionEnd) {
   exit 0
 }
 
-$notificationId = New-ToastNotificationId -Prefix $approvalNotificationPrefix
+$notificationId = New-NotificationId -Prefix $approvalNotificationPrefix
 $displayCmd = Normalize-ApprovalCommand -Command $cmd
 if ($displayCmd.Length -gt 120) {
   $displayCmd = $displayCmd.Substring(0, 117) + "..."
@@ -826,12 +427,7 @@ if ($displayCmd.Length -gt 120) {
 $title = if ($displayCmd) { $displayCmd } else { "Codex approval requested" }
 $contextText = "$cwd | $tool"
 
-$toastText = @(
-  $title,
-  $contextText
-)
-
-Write-DebugLog "approval id=$notificationId text=$($toastText -join ' || ')"
+Write-DebugLog "approval id=$notificationId text=$title || $contextText"
 Write-ApprovalState -NotificationId $notificationId -Tool $tool -Cwd $cwd -Command $cmd
 Start-ApprovalOverlay
 exit 0

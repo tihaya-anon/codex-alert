@@ -1,6 +1,6 @@
 ## SVG to PNG
 
-Render the Codex SVG into the PNG used by the Windows toast hook:
+Render the Codex SVG into the PNG used by the overlay window:
 
 ```bash
 uv run python svg_to_png.py
@@ -39,7 +39,7 @@ CODEX_HOOKS_DIR=/path/to/codex-alert/hooks
 
 The shell wrappers resolve `approval-toast.ps1` from their own directory, so
 running `hooks/clear-approval-toast-if-active.sh` or `hooks/session-end-toast.sh`
-locally uses the repository files and repository-local toast state.
+locally uses the repository files and repository-local overlay state.
 
 Approval requests are written to `approval-toast-active/*.json`. The WPF overlay
 is started by `approval-toast.ps1`, polls that directory, and renders the pending
