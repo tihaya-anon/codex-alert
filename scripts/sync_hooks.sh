@@ -62,6 +62,7 @@ codex_hooks_dir="${codex_home}/hooks"
 mkdir -p "${codex_hooks_dir}"
 
 install -m 0644 "${repo_root}/hooks/approval-toast.ps1" "${codex_hooks_dir}/approval-toast.ps1"
+install -m 0644 "${repo_root}/hooks/approval-overlay.ps1" "${codex_hooks_dir}/approval-overlay.ps1"
 install -m 0755 "${repo_root}/hooks/clear-approval-toast-if-active.sh" "${codex_hooks_dir}/clear-approval-toast-if-active.sh"
 install -m 0755 "${repo_root}/hooks/session-end-toast.sh" "${codex_hooks_dir}/session-end-toast.sh"
 install -m 0644 "${repo_root}/hooks/codex.svg" "${codex_hooks_dir}/codex.svg"

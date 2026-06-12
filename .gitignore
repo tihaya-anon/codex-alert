@@ -22,5 +22,6 @@ scripts/.venv/
 # Hook runtime state and logs
 hooks/approval-toast-active/
 hooks/approval-toast-active.json
+hooks/session-toast-active/
 hooks/approval-toast-config.json
 *.log

@@ -20,8 +20,9 @@ Sync the hook files in this repository into `~/.codex`:
 ./sync_hooks.sh --logging off
 ```
 
-This installs the approval-request toast hook and a `Stop` hook that shows the
-Codex working directory when a conversation turn ends.
+This installs the approval-request hook, a WPF overlay that stacks pending
+approval requests, and a `Stop` hook that shows the Codex working directory when
+a conversation turn ends.
 
 Use logging while developing the hook:
 
@@ -39,3 +40,8 @@ CODEX_HOOKS_DIR=/path/to/codex-alert/hooks
 The shell wrappers resolve `approval-toast.ps1` from their own directory, so
 running `hooks/clear-approval-toast-if-active.sh` or `hooks/session-end-toast.sh`
 locally uses the repository files and repository-local toast state.
+
+Approval requests are written to `approval-toast-active/*.json`. The WPF overlay
+is started by `approval-toast.ps1`, polls that directory, and renders the pending
+requests in timestamp order. `PostToolUse` removes matching state files after a
+tool finishes.

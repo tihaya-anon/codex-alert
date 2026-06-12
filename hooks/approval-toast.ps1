@@ -13,7 +13,9 @@ $appName = "Codex"
 $appRegistryPath = "HKCU:\Software\Classes\AppUserModelId\$appId"
 $appIconPath = Join-Path $env:LOCALAPPDATA "CodexApprovalToast\Icon.png"
 $bundledIconPath = Join-Path $PSScriptRoot "codex-approval-toast-icon.png"
+$overlayPath = Join-Path $PSScriptRoot "approval-overlay.ps1"
 $stateDir = Join-Path $PSScriptRoot "approval-toast-active"
+$sessionStateDir = Join-Path $PSScriptRoot "session-toast-active"
 $legacyStatePath = Join-Path $PSScriptRoot "approval-toast-active.json"
 $configPath = Join-Path $PSScriptRoot "approval-toast-config.json"
 $shortcutPath = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Codex.lnk"
@@ -45,6 +47,44 @@ function Write-DebugLog {
     $timestamp = (Get-Date).ToString("o")
     "$timestamp $Message" | Add-Content -Path $debugPath -Encoding UTF8
   } catch {}
+}
+
+function Start-ApprovalOverlay {
+  param(
+    [string]$OverlayStateDir = $stateDir,
+    [string]$Kind = "approval"
+  )
+
+  try {
+    if (-not (Test-Path $overlayPath)) {
+      Write-DebugLog "overlay missing path=$overlayPath"
+      return
+    }
+
+    New-Item -ItemType Directory -Path $OverlayStateDir -Force | Out-Null
+    $powershellPath = Join-Path $PSHOME "powershell.exe"
+    $arguments = @(
+      "-NoProfile",
+      "-STA",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      $overlayPath,
+      "-StateDir",
+      $OverlayStateDir,
+      "-LogPath",
+      $debugPath,
+      "-IconPath",
+      $appIconPath,
+      "-Kind",
+      $Kind
+    )
+
+    Start-Process -FilePath $powershellPath -ArgumentList $arguments -WindowStyle Hidden | Out-Null
+    Write-DebugLog "overlay start requested path=$overlayPath stateDir=$OverlayStateDir kind=$Kind"
+  } catch {
+    Write-DebugLog "overlay start failed: $($_.Exception.Message)"
+  }
 }
 
 function Set-ToastAppIdentity {
@@ -572,6 +612,31 @@ function Write-ApprovalState {
   }
 }
 
+function Write-SessionState {
+  param([string]$Cwd)
+
+  try {
+    New-Item -ItemType Directory -Path $sessionStateDir -Force | Out-Null
+    Get-ChildItem -Path $sessionStateDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+      Remove-Item -Force -ErrorAction SilentlyContinue
+
+    $sessionNotificationId = New-ToastNotificationId -Prefix $sessionEndNotificationPrefix
+    $statePath = Join-Path $sessionStateDir "$sessionNotificationId.json"
+    $state = @{
+      notification_id = $sessionNotificationId
+      timestamp = (Get-Date).ToString("o")
+      tool = "Stop"
+      cwd = $Cwd
+      command = "Codex turn finished"
+    } | ConvertTo-Json -Compress
+
+    $state | Set-Content -Path $statePath -Encoding UTF8
+    Write-DebugLog "session state written path=$statePath"
+  } catch {
+    Write-DebugLog "session state write failed: $($_.Exception.Message)"
+  }
+}
+
 function Test-ApprovalState {
   if (Test-Path $legacyStatePath) {
     return $true
@@ -725,6 +790,9 @@ if ($Clear) {
 
   Clear-ApprovalToast -NotificationIds $notificationIds
   Remove-ApprovalStates -States $statesToClear
+  if (Test-ApprovalState) {
+    Start-ApprovalOverlay
+  }
   exit 0
 }
 
@@ -744,10 +812,8 @@ $cwd = $context.Cwd
 $cmd = $context.Command
 
 if ($SessionEnd) {
-  $notificationId = New-ToastNotificationId -Prefix $sessionEndNotificationPrefix
-  $toastText = @($cwd)
-  Write-DebugLog "session end toast id=$notificationId text=$($toastText -join ' || ')"
-  Submit-ApprovalToast -Text $toastText -NotificationId $notificationId | Out-Null
+  Write-SessionState -Cwd $cwd
+  Start-ApprovalOverlay -OverlayStateDir $sessionStateDir -Kind "session"
   exit 0
 }
 
@@ -765,35 +831,7 @@ $toastText = @(
   $contextText
 )
 
-Write-DebugLog "toast id=$notificationId text=$($toastText -join ' || ')"
+Write-DebugLog "approval id=$notificationId text=$($toastText -join ' || ')"
 Write-ApprovalState -NotificationId $notificationId -Tool $tool -Cwd $cwd -Command $cmd
-
-if (Submit-ApprovalToast -Text $toastText -NotificationId $notificationId) {
-  exit 0
-}
-
-try {
-  $textItems = $toastText | ForEach-Object { New-BTText -Text $_ -Wrap }
-  $binding = New-BTBinding -Children $textItems
-  $visual = New-BTVisual -BindingGeneric $binding
-  $audio = New-BTAudio -Source "ms-winsoundevent:Notification.Reminder"
-  $content = New-BTContent `
-    -Visual $visual `
-    -Audio $audio `
-    -Scenario Reminder `
-    -Duration Long
-
-  Submit-BTNotification `
-    -Content $content `
-    -UniqueIdentifier $notificationId
-} catch {
-  Write-DebugLog "submit fallback: $($_.Exception.Message)"
-  try {
-    New-BurntToastNotification `
-      -Text $toastText `
-      -Sound Reminder `
-      -UniqueIdentifier $notificationId
-  } catch {
-    Write-DebugLog "submit failed: $($_.Exception.Message)"
-  }
-}
+Start-ApprovalOverlay
+exit 0
