@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${CODEX_HOOKS_DIR:-$PWD/.codex/hooks}/approval-toast.ps1\"",
+            "timeout": 15,
+            "statusMessage": "Notifying approval request"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CODEX_HOOKS_DIR:-$PWD/.codex/hooks}/clear-approval-toast-if-active.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CODEX_HOOKS_DIR:-$PWD/.codex/hooks}/session-end-toast.sh\"",
+            "timeout": 15,
+            "statusMessage": "Notifying conversation end"
+          }
+        ]
+      }
+    ]
+  }
+}

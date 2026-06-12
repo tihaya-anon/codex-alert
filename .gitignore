@@ -1,0 +1,26 @@
+# Local Codex runtime state
+.codex/
+.agents/
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+scripts/.venv/
+
+# Hook runtime state and logs
+hooks/approval-toast-active/
+hooks/approval-toast-active.json
+hooks/approval-toast-config.json
+*.log
