@@ -35,7 +35,9 @@ Use logging while developing the hook:
 Trigger the overlay directly from this repository without waiting for a real
 Codex approval.
 
-From WSL, the bash wrappers require Windows binary interop.
+From WSL, the bash wrappers require Windows binary interop. They do not require
+`appendWindowsPath=true`; if you keep `appendWindowsPath=false`, the runner will
+use standard PowerShell install paths under `/mnt/c` when possible.
 
 ```bash
 ./demo/approval/single.sh
@@ -68,7 +70,7 @@ The shell wrappers resolve `main.ps1` from their own directory, so
 running `hooks/clear-approval-toast-if-active.sh` or `hooks/session-end-toast.sh`
 locally uses the repository files and repository-local overlay state.
 
-Approval requests are written to `approval-toast-active/*.json`. The WPF overlay
-is started by `main.ps1`, polls that directory, and renders the pending requests
-in timestamp order. `PostToolUse` removes matching state files after a tool
-finishes.
+Approval and session items are written to `overlay-active/*.json`. The WPF
+overlay is started by `main.ps1`, polls that directory, and renders the unified
+feed in timestamp order. `PostToolUse` removes matching approval state files
+after a tool finishes, while session items remain until closed or cleared.

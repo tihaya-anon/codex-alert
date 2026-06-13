@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${CODEX_HOOKS_DIR:-$PWD/.codex/hooks}/main.ps1\" -Action approval",
+            "command": "bash \"${CODEX_HOOKS_DIR:-$PWD/.codex/hooks}/run-powershell-hook.sh\" -NoProfile -ExecutionPolicy Bypass -File \"${CODEX_HOOKS_DIR:-$PWD/.codex/hooks}/main.ps1\" -Action approval",
             "timeout": 15,
             "statusMessage": "Notifying approval request"
           }

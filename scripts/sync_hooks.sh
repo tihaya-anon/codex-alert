@@ -64,6 +64,7 @@ mkdir -p "${codex_hooks_dir}"
 install -d "${codex_hooks_dir}/lib"
 install -m 0644 "${repo_root}/hooks/main.ps1" "${codex_hooks_dir}/main.ps1"
 install -m 0644 "${repo_root}/hooks/approval-overlay.ps1" "${codex_hooks_dir}/approval-overlay.ps1"
+install -m 0755 "${repo_root}/hooks/run-powershell-hook.sh" "${codex_hooks_dir}/run-powershell-hook.sh"
 install -m 0644 "${repo_root}/hooks/lib/paths.ps1" "${codex_hooks_dir}/lib/paths.ps1"
 install -m 0644 "${repo_root}/hooks/lib/logging.ps1" "${codex_hooks_dir}/lib/logging.ps1"
 install -m 0644 "${repo_root}/hooks/lib/context.ps1" "${codex_hooks_dir}/lib/context.ps1"
@@ -83,7 +84,7 @@ cat > "${codex_home}/hooks.json" <<EOF
         "hooks": [
           {
             "type": "command",
-            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${codex_hooks_dir}/main.ps1\" -Action approval",
+            "command": "bash \"${codex_hooks_dir}/run-powershell-hook.sh\" -NoProfile -ExecutionPolicy Bypass -File \"${codex_hooks_dir}/main.ps1\" -Action approval",
             "timeout": 15,
             "statusMessage": "Notifying approval request"
           }

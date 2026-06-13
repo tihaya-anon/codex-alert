@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "usage: run_powershell_from_wsl.sh <powershell-args...>" >&2
-  exit 2
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_runner="${script_dir}/../scripts/run_powershell_from_wsl.sh"
+
+if [[ -x "${repo_runner}" ]]; then
+  exec "${repo_runner}" "$@"
 fi
 
 resolve_powershell() {
@@ -32,13 +34,8 @@ resolve_powershell() {
 
 powershell_path="$(resolve_powershell || true)"
 if [[ -z "${powershell_path}" ]]; then
-  cat >&2 <<'EOF'
-Unable to locate Windows PowerShell from WSL.
-Either enable Windows binary interop in WSL or make powershell.exe available on PATH.
-If you intentionally keep appendWindowsPath=false, this repo can still work as long as one of
-the standard PowerShell install paths exists under /mnt/c.
-EOF
+  echo "Unable to locate Windows PowerShell from WSL." >&2
   exit 1
 fi
 
-"${powershell_path}" "$@"
+exec "${powershell_path}" "$@"

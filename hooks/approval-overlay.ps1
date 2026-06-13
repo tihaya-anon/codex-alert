@@ -1,5 +1,5 @@
 param(
-  [string]$StateDir = (Join-Path $PSScriptRoot "approval-toast-active"),
+  [string]$StateDir = (Join-Path $PSScriptRoot "overlay-active"),
   [string]$LogPath = (Join-Path $env:TEMP "codex-approval-toast-debug.log"),
   [string]$IconPath = "",
   [ValidateSet("approval", "session")]
