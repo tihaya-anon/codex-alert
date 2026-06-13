@@ -118,11 +118,17 @@ function New-CloseSessionButton {
   $sessionButton.Foreground = "#FFFFFFFF"
   $sessionButton.BorderBrush = "#FF60A5FA"
   $sessionButton.Cursor = [Windows.Input.Cursors]::Hand
-
-  $buttonNotificationId = [string]$NotificationId
+  $sessionButton.Tag = [string]$NotificationId
   $sessionButton.Add_Click({
     param($sender, $eventArgs)
-    Clear-SessionState -NotificationId $buttonNotificationId
+    $buttonNotificationId = [string]$sender.Tag
+    if ($buttonNotificationId) {
+      Clear-SessionState -NotificationId $buttonNotificationId
+    }
+    $window.Dispatcher.BeginInvoke(
+      [Action]{ Refresh-Overlay },
+      [Windows.Threading.DispatcherPriority]::Background
+    ) | Out-Null
   })
 
   return $sessionButton
