@@ -38,14 +38,22 @@ Codex approval.
 From WSL, the bash wrappers require Windows binary interop.
 
 ```bash
-./demo_approval.sh
-./demo_approval_batch.sh 3
-./demo_clear_approvals.sh
+./demo/approval/single.sh
+./demo/approval/batch.sh
+./demo/approval/batch.sh short
+./demo/approval/batch.sh long
+./demo/approval/paths.sh
+./demo/session/stop.sh
+./demo/feed/mixed.sh
+./demo/approval/clear.sh
 ```
 
-`demo_approval.sh` accepts optional `tool_name`, `command`, and `cwd`
-arguments. `demo_approval_batch.sh` is useful for checking stacked approval
-cards.
+`demo/approval/single.sh` accepts optional `tool_name`, `command`, and `cwd`
+arguments. `demo/approval/batch.sh` is useful for checking stacked approval
+cards with mixed-length commands and supports `mixed`, `short`, and `long`
+scenarios. `demo/approval/paths.sh` is useful for checking multi-workspace
+path presentation, `demo/session/stop.sh` triggers the stop/session overlay, and
+`demo/feed/mixed.sh` tests a combined approval + session feed.
 
 For local development and testing, do not sync into `~/.codex`. Point Codex at
 this repository's hook files instead:

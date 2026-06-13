@@ -2,7 +2,8 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd -- "${script_dir}/.." && pwd)"
+scripts_root="$(cd -- "${script_dir}/../.." && pwd)"
+repo_root="$(cd -- "${scripts_root}/.." && pwd)"
 state_dir="${CODEX_HOOKS_DIR:-${repo_root}/hooks}/approval-toast-active"
 legacy_state_path="${CODEX_HOOKS_DIR:-${repo_root}/hooks}/approval-toast-active.json"
 

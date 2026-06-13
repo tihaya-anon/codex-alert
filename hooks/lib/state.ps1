@@ -19,7 +19,7 @@ function New-NotificationId {
 function Get-ApprovalStatePath {
   param([string]$NotificationId)
 
-  return Join-Path $script:ApprovalStateDir "$NotificationId.json"
+  return Join-Path $script:OverlayStateDir "$NotificationId.json"
 }
 
 function Get-ApprovalStates {
@@ -37,8 +37,8 @@ function Get-ApprovalStates {
   }
 
   try {
-    if (Test-Path $script:ApprovalStateDir) {
-      Get-ChildItem -Path $script:ApprovalStateDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+    if (Test-Path $script:OverlayStateDir) {
+      Get-ChildItem -Path $script:OverlayStateDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
         ForEach-Object {
           try {
             $state = Get-Content -Raw -Path $_.FullName | ConvertFrom-Json
@@ -71,27 +71,32 @@ function Select-ApprovalStatesForClear {
     return @()
   }
 
+  $approvalStates = @($States | Where-Object { [string]$_.item_kind -ne "session" })
+  if ($approvalStates.Count -eq 0) {
+    return @()
+  }
+
   $normalizedCommand = Normalize-ApprovalCommand -Command $Command
   $candidateStates = @()
 
   if ($Tool -or $Cwd -or $normalizedCommand) {
-    $candidateStates = @($States | Where-Object {
+    $candidateStates = @($approvalStates | Where-Object {
       [string]$_.tool -eq $Tool -and
       [string]$_.cwd -eq $Cwd -and
       [string]$_.command -eq $normalizedCommand
     })
 
     if ($candidateStates.Count -eq 0 -and $normalizedCommand) {
-      $candidateStates = @($States | Where-Object { [string]$_.command -eq $normalizedCommand })
+      $candidateStates = @($approvalStates | Where-Object { [string]$_.command -eq $normalizedCommand })
     }
 
     if ($candidateStates.Count -eq 0 -and $Tool) {
-      $candidateStates = @($States | Where-Object { [string]$_.tool -eq $Tool })
+      $candidateStates = @($approvalStates | Where-Object { [string]$_.tool -eq $Tool })
     }
   }
 
   if ($candidateStates.Count -eq 0) {
-    $candidateStates = @($States)
+    $candidateStates = @($approvalStates)
   }
 
   return @($candidateStates | Sort-Object -Property timestamp | Select-Object -First 1)
@@ -125,10 +130,11 @@ function Write-ApprovalState {
   )
 
   try {
-    New-Item -ItemType Directory -Path $script:ApprovalStateDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $script:OverlayStateDir -Force | Out-Null
     $state = @{
       notification_id = $NotificationId
       timestamp = (Get-Date).ToString("o")
+      item_kind = "approval"
       tool = $Tool
       cwd = $Cwd
       command = (Normalize-ApprovalCommand -Command $Command)
@@ -144,20 +150,21 @@ function Write-SessionState {
   param([string]$Cwd)
 
   try {
-    New-Item -ItemType Directory -Path $script:SessionStateDir -Force | Out-Null
-    Get-ChildItem -Path $script:SessionStateDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+    New-Item -ItemType Directory -Path $script:OverlayStateDir -Force | Out-Null
+    Get-ChildItem -Path $script:OverlayStateDir -Filter "$($script:NotificationPrefixSessionEnd)-*.json" -File -ErrorAction SilentlyContinue |
       Remove-Item -Force -ErrorAction SilentlyContinue
 
     $sessionNotificationId = New-NotificationId -Prefix $script:NotificationPrefixSessionEnd
     $state = @{
       notification_id = $sessionNotificationId
       timestamp = (Get-Date).ToString("o")
+      item_kind = "session"
       tool = "Stop"
       cwd = $Cwd
       command = "Codex turn finished"
     } | ConvertTo-Json -Compress
 
-    $statePath = Join-Path $script:SessionStateDir "$sessionNotificationId.json"
+    $statePath = Join-Path $script:OverlayStateDir "$sessionNotificationId.json"
     $state | Set-Content -Path $statePath -Encoding UTF8
     Write-DebugLog "session state written path=$statePath"
   } catch {
@@ -167,8 +174,8 @@ function Write-SessionState {
 
 function Clear-SessionStates {
   try {
-    if (Test-Path $script:SessionStateDir) {
-      Get-ChildItem -Path $script:SessionStateDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+    if (Test-Path $script:OverlayStateDir) {
+      Get-ChildItem -Path $script:OverlayStateDir -Filter "$($script:NotificationPrefixSessionEnd)-*.json" -File -ErrorAction SilentlyContinue |
         Remove-Item -Force -ErrorAction SilentlyContinue
       Write-DebugLog "session states cleared"
     }
@@ -182,8 +189,8 @@ function Test-ApprovalState {
     return $true
   }
 
-  if (Test-Path $script:ApprovalStateDir) {
-    return [bool](Get-ChildItem -Path $script:ApprovalStateDir -Filter "*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+  if (Test-Path $script:OverlayStateDir) {
+    return [bool](Get-ChildItem -Path $script:OverlayStateDir -Filter "$($script:NotificationPrefixApproval)-*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1)
   }
 
   return $false

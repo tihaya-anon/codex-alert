@@ -10,10 +10,10 @@ $ErrorActionPreference = "Stop"
 $pollInterval = [TimeSpan]::FromMilliseconds(500)
 $inactiveOpacity = 0.84
 $activeOpacity = 1.0
-$defaultCardWidth = 440
-$collapsedCommandMaxHeight = 54
-$expandedCommandMaxHeight = 10000
-$positionStatePath = Join-Path $PSScriptRoot ("overlay-window-state-{0}.json" -f $Kind)
+$defaultCardWidth = 360
+$sharedPositionStatePath = Join-Path $PSScriptRoot "overlay-window-state.json"
+$legacyApprovalPositionStatePath = Join-Path $PSScriptRoot "overlay-window-state-approval.json"
+$legacySessionPositionStatePath = Join-Path $PSScriptRoot "overlay-window-state-session.json"
 
 function Write-OverlayLog {
   param([string]$Message)
@@ -34,16 +34,6 @@ function Get-StateDirMutexName {
   } finally {
     $sha.Dispose()
   }
-}
-
-function ConvertTo-DisplayCommand {
-  param([string]$Command)
-
-  if (-not $Command) {
-    return "Codex approval requested"
-  }
-
-  return ($Command -replace '\s+', ' ').Trim()
 }
 
 function Read-ApprovalStates {
@@ -70,7 +60,7 @@ function Read-ApprovalStates {
           $states += [pscustomobject]@{
             NotificationId = [string]$state.notification_id
             Timestamp = $timestamp
-            Command = ConvertTo-DisplayCommand -Command ([string]$state.command)
+            ItemKind = if ($state.item_kind) { [string]$state.item_kind } else { "approval" }
             Cwd = [string]$state.cwd
             Tool = [string]$state.tool
           }
@@ -97,17 +87,69 @@ function Clear-StateDir {
   }
 }
 
-function Get-SavedWindowPosition {
+function Clear-SessionState {
+  param([string]$NotificationId)
+
   try {
-    if (-not (Test-Path $positionStatePath)) {
-      return $null
+    if (-not $NotificationId) {
+      return
     }
 
-    $position = Get-Content -Raw -Path $positionStatePath | ConvertFrom-Json
-    return [pscustomobject]@{
-      Left = [double]$position.left
-      Top = [double]$position.top
+    $statePath = Join-Path $StateDir "$NotificationId.json"
+    if (Test-Path $statePath) {
+      Remove-Item -Path $statePath -Force -ErrorAction SilentlyContinue
+      Write-OverlayLog "session state cleared path=$statePath"
     }
+  } catch {
+    Write-OverlayLog "session state clear failed kind=${Kind}: $($_.Exception.Message)"
+  }
+}
+
+function New-CloseSessionButton {
+  param([string]$NotificationId)
+
+  $sessionButton = New-Object Windows.Controls.Button
+  $sessionButton.Content = "Close"
+  $sessionButton.HorizontalAlignment = "Right"
+  $sessionButton.Margin = "0,8,0,0"
+  $sessionButton.Padding = "10,4,10,4"
+  $sessionButton.MinWidth = 72
+  $sessionButton.Background = "#FF60A5FA"
+  $sessionButton.Foreground = "#FFFFFFFF"
+  $sessionButton.BorderBrush = "#FF60A5FA"
+  $sessionButton.Cursor = [Windows.Input.Cursors]::Hand
+
+  $buttonNotificationId = [string]$NotificationId
+  $sessionButton.Add_Click({
+    param($sender, $eventArgs)
+    Clear-SessionState -NotificationId $buttonNotificationId
+    Refresh-Overlay
+  })
+
+  return $sessionButton
+}
+
+function Get-SavedWindowPosition {
+  try {
+    $candidatePaths = @(
+      $sharedPositionStatePath,
+      $legacyApprovalPositionStatePath,
+      $legacySessionPositionStatePath
+    )
+
+    foreach ($path in $candidatePaths) {
+      if (-not (Test-Path $path)) {
+        continue
+      }
+
+      $position = Get-Content -Raw -Path $path | ConvertFrom-Json
+      return [pscustomobject]@{
+        Left = [double]$position.left
+        Top = [double]$position.top
+      }
+    }
+
+    return $null
   } catch {
     Write-OverlayLog "position load failed kind=${Kind}: $($_.Exception.Message)"
     return $null
@@ -124,7 +166,7 @@ function Save-WindowPosition {
     @{
       left = $Left
       top = $Top
-    } | ConvertTo-Json | Set-Content -Path $positionStatePath -Encoding UTF8
+    } | ConvertTo-Json | Set-Content -Path $sharedPositionStatePath -Encoding UTF8
     Write-OverlayLog "position saved kind=$Kind left=$Left top=$Top"
   } catch {
     Write-OverlayLog "position save failed kind=${Kind}: $($_.Exception.Message)"
@@ -168,45 +210,26 @@ function New-StateCard {
   $stack = New-Object Windows.Controls.StackPanel
   $stack.Orientation = "Vertical"
 
-  $headingText = if ($Kind -eq "session") {
-    "$Index. $($State.Tool) | Finished"
+  if ($State.ItemKind -eq "session") {
+    $card.BorderBrush = "#FF60A5FA"
+    $pathText = New-TextBlock -Text $State.Cwd -FontSize 13 -Foreground "#FFE0F2FE" -FontWeight "SemiBold"
+    $stack.Children.Add($pathText) | Out-Null
   } else {
-    "$Index. $($State.Tool) | Pending"
+    $heading = New-TextBlock -Text "Workspace awaiting review" -FontSize 12 -Foreground "#FFFFFFFF" -FontWeight "SemiBold"
+    $stack.Children.Add($heading) | Out-Null
+
+    if ($State.Cwd) {
+      $pathText = New-TextBlock -Text $State.Cwd -FontSize 13 -Foreground "#FFE5E7EB" -FontWeight "SemiBold"
+      $pathText.Margin = "0,7,0,0"
+      $stack.Children.Add($pathText) | Out-Null
+    }
+
+    if ($State.Tool) {
+      $meta = New-TextBlock -Text $State.Tool -FontSize 11 -Foreground "#FF9CA3AF" -Opacity 0.95
+      $meta.Margin = "0,7,0,0"
+      $stack.Children.Add($meta) | Out-Null
+    }
   }
-  $heading = New-TextBlock -Text $headingText -FontSize 12 -Foreground "#FFFFFFFF" -FontWeight "SemiBold"
-  $stack.Children.Add($heading) | Out-Null
-
-  $commandBlock = New-TextBlock -Text $State.Command -FontSize 13 -Foreground "#FFF9FAFB" -FontWeight "SemiBold"
-  $commandBlock.FontFamily = New-Object Windows.Media.FontFamily -ArgumentList "Consolas"
-  $commandBlock.Margin = "0,8,0,0"
-  $commandBlock.MaxHeight = $collapsedCommandMaxHeight
-  $stack.Children.Add($commandBlock) | Out-Null
-
-  if ($State.Command.Length -gt 110) {
-    $toggleButton = New-Object Windows.Controls.Button
-    $toggleButton.Content = "Show more"
-    $toggleButton.HorizontalAlignment = "Left"
-    $toggleButton.Margin = "0,6,0,0"
-    $toggleButton.Padding = "0"
-    $toggleButton.Background = "Transparent"
-    $toggleButton.BorderThickness = 0
-    $toggleButton.Foreground = "#FF93C5FD"
-    $toggleButton.Cursor = [Windows.Input.Cursors]::Hand
-    $toggleButton.Add_Click({
-      if ($commandBlock.MaxHeight -gt 0) {
-        $commandBlock.MaxHeight = $expandedCommandMaxHeight
-        $toggleButton.Content = "Show less"
-      } else {
-        $commandBlock.MaxHeight = $collapsedCommandMaxHeight
-        $toggleButton.Content = "Show more"
-      }
-    })
-    $stack.Children.Add($toggleButton) | Out-Null
-  }
-
-  $meta = New-TextBlock -Text $State.Cwd -FontSize 11 -Foreground "#FF9CA3AF" -Opacity 0.95
-  $meta.Margin = "0,7,0,0"
-  $stack.Children.Add($meta) | Out-Null
 
   $card.Child = $stack
   return $card
@@ -216,11 +239,7 @@ function Invoke-OverlaySound {
   param([int]$NewStateCount = 1)
 
   try {
-    if ($Kind -eq "session") {
-      [System.Media.SystemSounds]::Asterisk.Play()
-    } else {
-      [System.Media.SystemSounds]::Exclamation.Play()
-    }
+    [System.Media.SystemSounds]::Exclamation.Play()
     Write-OverlayLog "sound played kind=$Kind newStates=$NewStateCount"
   } catch {
     Write-OverlayLog "sound failed kind=${Kind}: $($_.Exception.Message)"
@@ -241,7 +260,7 @@ try {
   Add-Type -AssemblyName WindowsBase
 
   $window = New-Object Windows.Window
-  $window.Title = if ($Kind -eq "session") { "Codex" } else { "Codex approvals" }
+  $window.Title = "Codex"
   $window.WindowStyle = "None"
   $window.ResizeMode = "NoResize"
   $window.AllowsTransparency = $true
@@ -286,7 +305,7 @@ try {
   $headerStack = New-Object Windows.Controls.StackPanel
   $headerStack.Orientation = "Vertical"
 
-  $header = New-TextBlock -Text "Codex approvals" -FontSize 13 -Foreground "#FFFFFFFF" -FontWeight "SemiBold"
+  $header = New-TextBlock -Text "Codex" -FontSize 13 -Foreground "#FFFFFFFF" -FontWeight "SemiBold"
   $header.Margin = "0,0,0,9"
   $headerStack.Children.Add($header) | Out-Null
 
@@ -307,29 +326,6 @@ try {
   $scrollViewer.MaxHeight = 680
   $scrollViewer.Content = $cardsPanel
   $root.Children.Add($scrollViewer) | Out-Null
-
-  $buttonRow = New-Object Windows.Controls.StackPanel
-  $buttonRow.Orientation = "Horizontal"
-  $buttonRow.HorizontalAlignment = "Right"
-  $buttonRow.Margin = "0,10,0,0"
-  $buttonRow.Visibility = "Collapsed"
-
-  $dismissButton = New-Object Windows.Controls.Button
-  $dismissButton.Content = "Close"
-  $dismissButton.Padding = "12,6,12,6"
-  $dismissButton.MinWidth = 88
-  $dismissButton.Background = "#FF10A37F"
-  $dismissButton.Foreground = "#FFFFFFFF"
-  $dismissButton.BorderBrush = "#FF10A37F"
-  $dismissButton.Cursor = [Windows.Input.Cursors]::Hand
-  $dismissButton.Add_Click({
-    Write-OverlayLog "manual close clicked kind=$Kind"
-    Clear-StateDir
-    $window.Hide()
-    $window.Close()
-  })
-  $buttonRow.Children.Add($dismissButton) | Out-Null
-  $root.Children.Add($buttonRow) | Out-Null
 
   $outer.Child = $root
   $window.Content = $outer
@@ -435,20 +431,61 @@ try {
     $cardsPanel.Children.Clear()
     $count = $states.Count
     $plural = if ($count -eq 1) { "" } else { "s" }
-    if ($Kind -eq "session") {
-      $header.Text = "Codex turn finished"
-      $subheader.Text = "This notice stays visible until you close it or a new Codex action replaces it."
+    $sessionStates = @($states | Where-Object { $_.ItemKind -eq "session" })
+    $approvalStates = @($states | Where-Object { $_.ItemKind -ne "session" })
+    $outer.BorderBrush = if ($approvalStates.Count -gt 0) { "#FF10A37F" } else { "#FF60A5FA" }
+
+    if ($approvalStates.Count -gt 0) {
+      $approvalPlural = if ($approvalStates.Count -eq 1) { "" } else { "s" }
+      $header.Text = "$($approvalStates.Count) approval$approvalPlural pending"
+      $uniqueCwds = @($approvalStates | ForEach-Object { $_.Cwd } | Where-Object { $_ } | Select-Object -Unique)
+      if ($uniqueCwds.Count -eq 1) {
+        $subheader.Text = $uniqueCwds[0]
+      } elseif ($uniqueCwds.Count -gt 1) {
+        $subheader.Text = "$($uniqueCwds.Count) workspaces waiting for review"
+      } else {
+        $subheader.Text = "Return to Codex to allow or reject"
+      }
       $subheader.Visibility = "Visible"
-      $buttonRow.Visibility = "Visible"
     } else {
-      $header.Text = "$count Codex approval$plural pending"
-      $subheader.Text = "Waiting for approve/reject in Codex."
+      $header.Text = "Codex"
+      if ($sessionStates.Count -gt 0 -and $sessionStates[0].Cwd) {
+        $subheader.Text = $sessionStates[0].Cwd
+      } else {
+        $subheader.Text = "Turn finished"
+      }
       $subheader.Visibility = "Visible"
-      $buttonRow.Visibility = "Collapsed"
     }
 
-    for ($i = 0; $i -lt $states.Count; $i++) {
-      $cardsPanel.Children.Add((New-StateCard -State $states[$i] -Index ($i + 1))) | Out-Null
+    for ($i = 0; $i -lt $sessionStates.Count; $i++) {
+      $sessionState = $sessionStates[$i]
+      $sessionCard = New-StateCard -State $sessionState -Index ($i + 1)
+
+      $sessionCardStack = [Windows.Controls.StackPanel]$sessionCard.Child
+      $sessionButton = New-CloseSessionButton -NotificationId $sessionState.NotificationId
+      $sessionCardStack.Children.Add($sessionButton) | Out-Null
+      $cardsPanel.Children.Add($sessionCard) | Out-Null
+    }
+
+    if ($approvalStates.Count -gt 0) {
+      $workspaceGroups = @($approvalStates | Group-Object -Property Cwd)
+      for ($i = 0; $i -lt $workspaceGroups.Count; $i++) {
+        $group = $workspaceGroups[$i]
+        $toolGroups = @($group.Group | Group-Object -Property Tool)
+        $toolSummary = if ($group.Count -eq 1) {
+          "1 approval pending"
+        } elseif ($toolGroups.Count -eq 0) {
+          "$($group.Count) approvals pending"
+        } else {
+          "$($group.Count) approvals pending"
+        }
+        $groupState = [pscustomobject]@{
+          ItemKind = "approval"
+          Tool = $toolSummary
+          Cwd = if ($group.Name) { [string]$group.Name } else { "Unknown workspace" }
+        }
+        $cardsPanel.Children.Add((New-StateCard -State $groupState -Index ($sessionStates.Count + $i + 1))) | Out-Null
+      }
     }
 
     if (-not $window.IsVisible) {

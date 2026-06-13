@@ -23,5 +23,7 @@ scripts/.venv/
 hooks/approval-toast-active/
 hooks/approval-toast-active.json
 hooks/session-toast-active/
+hooks/overlay-active/
+hooks/overlay-window-state*.json
 hooks/approval-toast-config.json
 *.log

@@ -2,9 +2,10 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd -- "${script_dir}/.." && pwd)"
+scripts_root="$(cd -- "${script_dir}/../.." && pwd)"
+repo_root="$(cd -- "${scripts_root}/.." && pwd)"
 hooks_dir="${CODEX_HOOKS_DIR:-${repo_root}/hooks}"
-ps_runner="${script_dir}/run_powershell_from_wsl.sh"
+ps_runner="${scripts_root}/run_powershell_from_wsl.sh"
 
 tool_name="${1:-functions.exec_command}"
 command_text="${2:-pnpm --filter web test}"

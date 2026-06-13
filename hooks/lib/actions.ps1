@@ -1,8 +1,6 @@
 function Show-ApprovalOverlay {
   param([pscustomobject]$Context)
 
-  Clear-SessionStates
-
   $notificationId = New-NotificationId -Prefix $script:NotificationPrefixApproval
   $displayCommand = Normalize-ApprovalCommand -Command $Context.Command
   if ($displayCommand.Length -gt 120) {
@@ -14,7 +12,7 @@ function Show-ApprovalOverlay {
 
   Write-DebugLog "approval id=$notificationId text=$title || $contextText"
   Write-ApprovalState -NotificationId $notificationId -Tool $Context.Tool -Cwd $Context.Cwd -Command $Context.Command
-  Start-OverlayProcess -StateDir $script:ApprovalStateDir -Kind "approval"
+  Start-OverlayProcess -StateDir $script:OverlayStateDir -Kind "approval"
 }
 
 function Clear-ApprovalOverlay {
@@ -30,7 +28,7 @@ function Clear-ApprovalOverlay {
   Remove-ApprovalStates -States $statesToClear
 
   if (Test-ApprovalState) {
-    Start-OverlayProcess -StateDir $script:ApprovalStateDir -Kind "approval"
+    Start-OverlayProcess -StateDir $script:OverlayStateDir -Kind "approval"
   }
 }
 
@@ -38,5 +36,5 @@ function Show-SessionOverlay {
   param([pscustomobject]$Context)
 
   Write-SessionState -Cwd $Context.Cwd
-  Start-OverlayProcess -StateDir $script:SessionStateDir -Kind "session"
+  Start-OverlayProcess -StateDir $script:OverlayStateDir -Kind "approval"
 }
