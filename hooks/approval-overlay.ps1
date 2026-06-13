@@ -8,6 +8,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 $pollInterval = [TimeSpan]::FromMilliseconds(500)
+$inactiveOpacity = 0.84
+$activeOpacity = 1.0
+$defaultCardWidth = 440
+$collapsedCommandMaxHeight = 54
+$expandedCommandMaxHeight = 10000
+$positionStatePath = Join-Path $PSScriptRoot ("overlay-window-state-{0}.json" -f $Kind)
 
 function Write-OverlayLog {
   param([string]$Message)
@@ -37,12 +43,7 @@ function ConvertTo-DisplayCommand {
     return "Codex approval requested"
   }
 
-  $value = ($Command -replace '\s+', ' ').Trim()
-  if ($value.Length -gt 150) {
-    return $value.Substring(0, 147) + "..."
-  }
-
-  return $value
+  return ($Command -replace '\s+', ' ').Trim()
 }
 
 function Read-ApprovalStates {
@@ -96,6 +97,40 @@ function Clear-StateDir {
   }
 }
 
+function Get-SavedWindowPosition {
+  try {
+    if (-not (Test-Path $positionStatePath)) {
+      return $null
+    }
+
+    $position = Get-Content -Raw -Path $positionStatePath | ConvertFrom-Json
+    return [pscustomobject]@{
+      Left = [double]$position.left
+      Top = [double]$position.top
+    }
+  } catch {
+    Write-OverlayLog "position load failed kind=${Kind}: $($_.Exception.Message)"
+    return $null
+  }
+}
+
+function Save-WindowPosition {
+  param(
+    [double]$Left,
+    [double]$Top
+  )
+
+  try {
+    @{
+      left = $Left
+      top = $Top
+    } | ConvertTo-Json | Set-Content -Path $positionStatePath -Encoding UTF8
+    Write-OverlayLog "position saved kind=$Kind left=$Left top=$Top"
+  } catch {
+    Write-OverlayLog "position save failed kind=${Kind}: $($_.Exception.Message)"
+  }
+}
+
 function New-TextBlock {
   param(
     [string]$Text,
@@ -128,18 +163,49 @@ function New-StateCard {
   $card.CornerRadius = 6
   $card.Padding = "10,9,10,9"
   $card.Margin = "0,0,0,8"
-  $card.Width = 390
+  $card.Width = $defaultCardWidth
 
   $stack = New-Object Windows.Controls.StackPanel
   $stack.Orientation = "Vertical"
 
-  $heading = New-TextBlock -Text "$Index. $($State.Command)" -FontSize 13 -Foreground "#FFFFFFFF" -FontWeight "SemiBold"
-  $heading.MaxHeight = 42
+  $headingText = if ($Kind -eq "session") {
+    "$Index. $($State.Tool) | Finished"
+  } else {
+    "$Index. $($State.Tool) | Pending"
+  }
+  $heading = New-TextBlock -Text $headingText -FontSize 12 -Foreground "#FFFFFFFF" -FontWeight "SemiBold"
   $stack.Children.Add($heading) | Out-Null
 
-  $meta = New-TextBlock -Text "$($State.Cwd) | $($State.Tool)" -FontSize 11 -Foreground "#FF9CA3AF" -Opacity 0.95
-  $meta.Margin = "0,5,0,0"
-  $meta.MaxHeight = 32
+  $commandBlock = New-TextBlock -Text $State.Command -FontSize 13 -Foreground "#FFF9FAFB" -FontWeight "SemiBold"
+  $commandBlock.FontFamily = New-Object Windows.Media.FontFamily -ArgumentList "Consolas"
+  $commandBlock.Margin = "0,8,0,0"
+  $commandBlock.MaxHeight = $collapsedCommandMaxHeight
+  $stack.Children.Add($commandBlock) | Out-Null
+
+  if ($State.Command.Length -gt 110) {
+    $toggleButton = New-Object Windows.Controls.Button
+    $toggleButton.Content = "Show more"
+    $toggleButton.HorizontalAlignment = "Left"
+    $toggleButton.Margin = "0,6,0,0"
+    $toggleButton.Padding = "0"
+    $toggleButton.Background = "Transparent"
+    $toggleButton.BorderThickness = 0
+    $toggleButton.Foreground = "#FF93C5FD"
+    $toggleButton.Cursor = [Windows.Input.Cursors]::Hand
+    $toggleButton.Add_Click({
+      if ($commandBlock.MaxHeight -gt 0) {
+        $commandBlock.MaxHeight = $expandedCommandMaxHeight
+        $toggleButton.Content = "Show less"
+      } else {
+        $commandBlock.MaxHeight = $collapsedCommandMaxHeight
+        $toggleButton.Content = "Show more"
+      }
+    })
+    $stack.Children.Add($toggleButton) | Out-Null
+  }
+
+  $meta = New-TextBlock -Text $State.Cwd -FontSize 11 -Foreground "#FF9CA3AF" -Opacity 0.95
+  $meta.Margin = "0,7,0,0"
   $stack.Children.Add($meta) | Out-Null
 
   $card.Child = $stack
@@ -184,6 +250,7 @@ try {
   $window.ShowInTaskbar = $false
   $window.ShowActivated = $false
   $window.SizeToContent = "WidthAndHeight"
+  $window.Opacity = $inactiveOpacity
 
   if ($IconPath -and (Test-Path $IconPath)) {
     try {
@@ -210,14 +277,25 @@ try {
   $root = New-Object Windows.Controls.StackPanel
   $root.Orientation = "Vertical"
 
+  $headerHost = New-Object Windows.Controls.Border
+  $headerHost.Background = "Transparent"
+  $headerHost.Cursor = [Windows.Input.Cursors]::SizeAll
+  $headerHost.Padding = "0,0,0,0"
+
+  $headerStack = New-Object Windows.Controls.StackPanel
+  $headerStack.Orientation = "Vertical"
+
   $header = New-TextBlock -Text "Codex approvals" -FontSize 13 -Foreground "#FFFFFFFF" -FontWeight "SemiBold"
   $header.Margin = "0,0,0,9"
-  $root.Children.Add($header) | Out-Null
+  $headerStack.Children.Add($header) | Out-Null
 
   $subheader = New-TextBlock -Text "" -FontSize 11 -Foreground "#FF9CA3AF" -Opacity 0.95
   $subheader.Margin = "0,0,0,10"
   $subheader.Visibility = "Collapsed"
-  $root.Children.Add($subheader) | Out-Null
+  $headerStack.Children.Add($subheader) | Out-Null
+
+  $headerHost.Child = $headerStack
+  $root.Children.Add($headerHost) | Out-Null
 
   $cardsPanel = New-Object Windows.Controls.StackPanel
   $cardsPanel.Orientation = "Vertical"
@@ -257,12 +335,52 @@ try {
 
   $lastStateKey = ""
   $seenStateIds = @{}
+  $savedPosition = Get-SavedWindowPosition
+  $script:PreferredLeft = if ($null -ne $savedPosition) { [double]$savedPosition.Left } else { [double]::NaN }
+  $script:PreferredTop = if ($null -ne $savedPosition) { [double]$savedPosition.Top } else { [double]::NaN }
+
+  function Set-InactiveWindowOpacity {
+    if (-not $window.IsMouseOver) {
+      $window.Opacity = $inactiveOpacity
+    }
+  }
+
+  function Get-ClampedWindowPosition {
+    param(
+      [double]$Left,
+      [double]$Top
+    )
+
+    $workArea = [Windows.SystemParameters]::WorkArea
+    $window.UpdateLayout()
+    $maxLeft = [Math]::Max($workArea.Left + 12, $workArea.Right - $window.ActualWidth - 12)
+    $maxTop = [Math]::Max($workArea.Top + 12, $workArea.Bottom - $window.ActualHeight - 12)
+
+    return [pscustomobject]@{
+      Left = [Math]::Min([Math]::Max($Left, $workArea.Left + 12), $maxLeft)
+      Top = [Math]::Min([Math]::Max($Top, $workArea.Top + 12), $maxTop)
+    }
+  }
 
   function Move-OverlayWindow {
+    if (-not [double]::IsNaN($script:PreferredLeft) -and -not [double]::IsNaN($script:PreferredTop)) {
+      $position = Get-ClampedWindowPosition -Left $script:PreferredLeft -Top $script:PreferredTop
+      $window.Left = $position.Left
+      $window.Top = $position.Top
+      return
+    }
+
     $workArea = [Windows.SystemParameters]::WorkArea
     $window.UpdateLayout()
     $window.Left = [Math]::Max($workArea.Left + 12, $workArea.Right - $window.ActualWidth - 18)
     $window.Top = [Math]::Max($workArea.Top + 12, $workArea.Bottom - $window.ActualHeight - 18)
+  }
+
+  function Save-CurrentWindowPosition {
+    $position = Get-ClampedWindowPosition -Left $window.Left -Top $window.Top
+    $script:PreferredLeft = $position.Left
+    $script:PreferredTop = $position.Top
+    Save-WindowPosition -Left $position.Left -Top $position.Top
   }
 
   function Refresh-Overlay {
@@ -317,11 +435,28 @@ try {
       $window.Show()
     }
     Move-OverlayWindow
+    Set-InactiveWindowOpacity
   }
 
   $timer = New-Object Windows.Threading.DispatcherTimer
   $timer.Interval = $pollInterval
   $timer.Add_Tick({ Refresh-Overlay })
+  $window.Add_MouseEnter({
+    $window.Opacity = $activeOpacity
+  })
+  $window.Add_MouseLeave({
+    Set-InactiveWindowOpacity
+  })
+  $headerHost.Add_MouseLeftButtonDown({
+    try {
+      $window.Opacity = $activeOpacity
+      $window.DragMove()
+      Save-CurrentWindowPosition
+      Set-InactiveWindowOpacity
+    } catch {
+      Write-OverlayLog "drag failed kind=${Kind}: $($_.Exception.Message)"
+    }
+  })
   $window.Add_Closed({
     try {
       $timer.Stop()
