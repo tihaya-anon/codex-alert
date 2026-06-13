@@ -123,7 +123,6 @@ function New-CloseSessionButton {
   $sessionButton.Add_Click({
     param($sender, $eventArgs)
     Clear-SessionState -NotificationId $buttonNotificationId
-    Refresh-Overlay
   })
 
   return $sessionButton
@@ -431,8 +430,8 @@ try {
     $cardsPanel.Children.Clear()
     $count = $states.Count
     $plural = if ($count -eq 1) { "" } else { "s" }
-    $sessionStates = @($states | Where-Object { $_.ItemKind -eq "session" })
-    $approvalStates = @($states | Where-Object { $_.ItemKind -ne "session" })
+    $sessionStates = @($states | Where-Object { [string]$_.ItemKind -eq "session" })
+    $approvalStates = @($states | Where-Object { [string]$_.ItemKind -ne "session" })
     $outer.BorderBrush = if ($approvalStates.Count -gt 0) { "#FF10A37F" } else { "#FF60A5FA" }
 
     if ($approvalStates.Count -gt 0) {

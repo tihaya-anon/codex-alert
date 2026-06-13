@@ -71,7 +71,14 @@ function Select-ApprovalStatesForClear {
     return @()
   }
 
-  $approvalStates = @($States | Where-Object { [string]$_.item_kind -ne "session" })
+  $approvalStates = @($States | Where-Object {
+    $itemKind = ""
+    try { $itemKind = [string]$_.item_kind } catch {}
+    if (-not $itemKind) {
+      try { $itemKind = [string]$_.ItemKind } catch {}
+    }
+    $itemKind -ne "session"
+  })
   if ($approvalStates.Count -eq 0) {
     return @()
   }

@@ -44,6 +44,7 @@ From WSL, the bash wrappers require Windows binary interop.
 ./demo/approval/batch.sh long
 ./demo/approval/paths.sh
 ./demo/session/stop.sh
+./demo/session/clear.sh
 ./demo/feed/mixed.sh
 ./demo/approval/clear.sh
 ```
@@ -53,7 +54,8 @@ arguments. `demo/approval/batch.sh` is useful for checking stacked approval
 cards with mixed-length commands and supports `mixed`, `short`, and `long`
 scenarios. `demo/approval/paths.sh` is useful for checking multi-workspace
 path presentation, `demo/session/stop.sh` triggers the stop/session overlay, and
-`demo/feed/mixed.sh` tests a combined approval + session feed.
+`demo/session/clear.sh` clears only session items. `demo/feed/mixed.sh` tests a
+combined approval + session feed.
 
 For local development and testing, do not sync into `~/.codex`. Point Codex at
 this repository's hook files instead:
