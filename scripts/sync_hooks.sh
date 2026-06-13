@@ -61,8 +61,15 @@ codex_hooks_dir="${codex_home}/hooks"
 
 mkdir -p "${codex_hooks_dir}"
 
-install -m 0644 "${repo_root}/hooks/approval-toast.ps1" "${codex_hooks_dir}/approval-toast.ps1"
+install -d "${codex_hooks_dir}/lib"
+install -m 0644 "${repo_root}/hooks/main.ps1" "${codex_hooks_dir}/main.ps1"
 install -m 0644 "${repo_root}/hooks/approval-overlay.ps1" "${codex_hooks_dir}/approval-overlay.ps1"
+install -m 0644 "${repo_root}/hooks/lib/paths.ps1" "${codex_hooks_dir}/lib/paths.ps1"
+install -m 0644 "${repo_root}/hooks/lib/logging.ps1" "${codex_hooks_dir}/lib/logging.ps1"
+install -m 0644 "${repo_root}/hooks/lib/context.ps1" "${codex_hooks_dir}/lib/context.ps1"
+install -m 0644 "${repo_root}/hooks/lib/state.ps1" "${codex_hooks_dir}/lib/state.ps1"
+install -m 0644 "${repo_root}/hooks/lib/overlay.ps1" "${codex_hooks_dir}/lib/overlay.ps1"
+install -m 0644 "${repo_root}/hooks/lib/actions.ps1" "${codex_hooks_dir}/lib/actions.ps1"
 install -m 0755 "${repo_root}/hooks/clear-approval-toast-if-active.sh" "${codex_hooks_dir}/clear-approval-toast-if-active.sh"
 install -m 0755 "${repo_root}/hooks/session-end-toast.sh" "${codex_hooks_dir}/session-end-toast.sh"
 install -m 0644 "${repo_root}/hooks/codex.svg" "${codex_hooks_dir}/codex.svg"
@@ -76,7 +83,7 @@ cat > "${codex_home}/hooks.json" <<EOF
         "hooks": [
           {
             "type": "command",
-            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${codex_hooks_dir}/approval-toast.ps1\"",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${codex_hooks_dir}/main.ps1\" -Action approval",
             "timeout": 15,
             "statusMessage": "Notifying approval request"
           }

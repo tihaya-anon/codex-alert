@@ -1,0 +1,11 @@
+$script:NotificationPrefixApproval = "codex-approval"
+$script:NotificationPrefixSessionEnd = "codex-session-end"
+$script:LegacyApprovalNotificationId = "codex-approval"
+
+$script:DebugLogPath = Join-Path $env:TEMP "codex-approval-toast-debug.log"
+$script:OverlayScriptPath = Join-Path $PSScriptRoot ".." "approval-overlay.ps1"
+$script:OverlayIconPath = Join-Path $PSScriptRoot ".." "codex-approval-toast-icon.png"
+$script:ApprovalStateDir = Join-Path $PSScriptRoot ".." "approval-toast-active"
+$script:SessionStateDir = Join-Path $PSScriptRoot ".." "session-toast-active"
+$script:LegacyApprovalStatePath = Join-Path $PSScriptRoot ".." "approval-toast-active.json"
+$script:ToastConfigPath = Join-Path $PSScriptRoot ".." "approval-toast-config.json"

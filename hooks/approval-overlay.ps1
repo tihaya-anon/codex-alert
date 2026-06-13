@@ -7,8 +7,6 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$idleExitAfter = if ($Kind -eq "session") { [TimeSpan]::FromSeconds(6) } else { [TimeSpan]::FromSeconds(30) }
-$sessionVisibleFor = [TimeSpan]::FromSeconds(4)
 $pollInterval = [TimeSpan]::FromMilliseconds(500)
 
 function Write-OverlayLog {
@@ -84,6 +82,18 @@ function Read-ApprovalStates {
   }
 
   return @($states | Sort-Object -Property Timestamp, NotificationId)
+}
+
+function Clear-StateDir {
+  try {
+    if (Test-Path $StateDir) {
+      Get-ChildItem -Path $StateDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+    Write-OverlayLog "state dir cleared kind=$Kind stateDir=$StateDir"
+  } catch {
+    Write-OverlayLog "state dir clear failed kind=${Kind}: $($_.Exception.Message)"
+  }
 }
 
 function New-TextBlock {
@@ -204,6 +214,11 @@ try {
   $header.Margin = "0,0,0,9"
   $root.Children.Add($header) | Out-Null
 
+  $subheader = New-TextBlock -Text "" -FontSize 11 -Foreground "#FF9CA3AF" -Opacity 0.95
+  $subheader.Margin = "0,0,0,10"
+  $subheader.Visibility = "Collapsed"
+  $root.Children.Add($subheader) | Out-Null
+
   $cardsPanel = New-Object Windows.Controls.StackPanel
   $cardsPanel.Orientation = "Vertical"
 
@@ -214,10 +229,32 @@ try {
   $scrollViewer.Content = $cardsPanel
   $root.Children.Add($scrollViewer) | Out-Null
 
+  $buttonRow = New-Object Windows.Controls.StackPanel
+  $buttonRow.Orientation = "Horizontal"
+  $buttonRow.HorizontalAlignment = "Right"
+  $buttonRow.Margin = "0,10,0,0"
+  $buttonRow.Visibility = "Collapsed"
+
+  $dismissButton = New-Object Windows.Controls.Button
+  $dismissButton.Content = "Close"
+  $dismissButton.Padding = "12,6,12,6"
+  $dismissButton.MinWidth = 88
+  $dismissButton.Background = "#FF10A37F"
+  $dismissButton.Foreground = "#FFFFFFFF"
+  $dismissButton.BorderBrush = "#FF10A37F"
+  $dismissButton.Cursor = [Windows.Input.Cursors]::Hand
+  $dismissButton.Add_Click({
+    Write-OverlayLog "manual close clicked kind=$Kind"
+    Clear-StateDir
+    $window.Hide()
+    $window.Close()
+  })
+  $buttonRow.Children.Add($dismissButton) | Out-Null
+  $root.Children.Add($buttonRow) | Out-Null
+
   $outer.Child = $root
   $window.Content = $outer
 
-  $lastNonEmpty = Get-Date
   $lastStateKey = ""
   $seenStateIds = @{}
 
@@ -230,25 +267,13 @@ try {
 
   function Refresh-Overlay {
     $states = @(Read-ApprovalStates)
-    if ($Kind -eq "session" -and $states.Count -gt 0) {
-      $now = [DateTimeOffset]::Now
-      $states = @($states | Where-Object { ($now - $_.Timestamp) -lt $sessionVisibleFor })
-      if ($states.Count -eq 0) {
-        Get-ChildItem -Path $StateDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-          Remove-Item -Force -ErrorAction SilentlyContinue
-      }
-    }
-
     if ($states.Count -eq 0) {
       $window.Hide()
-      if (((Get-Date) - $lastNonEmpty) -ge $idleExitAfter) {
-        Write-OverlayLog "idle exit stateDir=$StateDir"
-        $window.Close()
-      }
+      Write-OverlayLog "no states remaining kind=$Kind"
+      $window.Close()
       return
     }
 
-    $script:lastNonEmpty = Get-Date
     $stateKey = ($states | ForEach-Object { $_.NotificationId }) -join "|"
     $newStateCount = 0
     foreach ($state in $states) {
@@ -274,8 +299,14 @@ try {
     $plural = if ($count -eq 1) { "" } else { "s" }
     if ($Kind -eq "session") {
       $header.Text = "Codex turn finished"
+      $subheader.Text = "This notice stays visible until you close it or a new Codex action replaces it."
+      $subheader.Visibility = "Visible"
+      $buttonRow.Visibility = "Visible"
     } else {
       $header.Text = "$count Codex approval$plural pending"
+      $subheader.Text = "Waiting for approve/reject in Codex."
+      $subheader.Visibility = "Visible"
+      $buttonRow.Visibility = "Collapsed"
     }
 
     for ($i = 0; $i -lt $states.Count; $i++) {

@@ -30,6 +30,21 @@ Use logging while developing the hook:
 ./sync_hooks.sh --logging on
 ```
 
+## Demo Approval UI
+
+Trigger the overlay directly from this repository without waiting for a real
+Codex approval:
+
+```bash
+./demo_approval.sh
+./demo_approval_batch.sh 3
+./demo_clear_approvals.sh
+```
+
+`demo_approval.sh` accepts optional `tool_name`, `command`, and `cwd`
+arguments. `demo_approval_batch.sh` is useful for checking stacked approval
+cards.
+
 For local development and testing, do not sync into `~/.codex`. Point Codex at
 this repository's hook files instead:
 
@@ -37,11 +52,11 @@ this repository's hook files instead:
 CODEX_HOOKS_DIR=/path/to/codex-alert/hooks
 ```
 
-The shell wrappers resolve `approval-toast.ps1` from their own directory, so
+The shell wrappers resolve `main.ps1` from their own directory, so
 running `hooks/clear-approval-toast-if-active.sh` or `hooks/session-end-toast.sh`
 locally uses the repository files and repository-local overlay state.
 
 Approval requests are written to `approval-toast-active/*.json`. The WPF overlay
-is started by `approval-toast.ps1`, polls that directory, and renders the pending
-requests in timestamp order. `PostToolUse` removes matching state files after a
-tool finishes.
+is started by `main.ps1`, polls that directory, and renders the pending requests
+in timestamp order. `PostToolUse` removes matching state files after a tool
+finishes.

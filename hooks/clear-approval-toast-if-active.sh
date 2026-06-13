@@ -21,4 +21,4 @@ fi
 
 payload="$(cat)"
 printf '%s' "${payload}" |
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${script_dir}/approval-toast.ps1" -Clear
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${script_dir}/main.ps1" -Action clear
