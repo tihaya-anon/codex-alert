@@ -5,12 +5,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-. (Join-Path $PSScriptRoot "lib" "paths.ps1")
-. (Join-Path $PSScriptRoot "lib" "logging.ps1")
-. (Join-Path $PSScriptRoot "lib" "context.ps1")
-. (Join-Path $PSScriptRoot "lib" "state.ps1")
-. (Join-Path $PSScriptRoot "lib" "overlay.ps1")
-. (Join-Path $PSScriptRoot "lib" "actions.ps1")
+$libDir = Join-Path $PSScriptRoot "lib"
+
+. (Join-Path $libDir "paths.ps1")
+. (Join-Path $libDir "logging.ps1")
+. (Join-Path $libDir "context.ps1")
+. (Join-Path $libDir "state.ps1")
+. (Join-Path $libDir "overlay.ps1")
+. (Join-Path $libDir "actions.ps1")
 
 $inputJson = [Console]::In.ReadToEnd()
 Write-DebugLog "action=$Action payload=$inputJson"

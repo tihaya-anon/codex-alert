@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
 hooks_dir="${CODEX_HOOKS_DIR:-${repo_root}/hooks}"
+ps_runner="${script_dir}/run_powershell_from_wsl.sh"
 
 tool_name="${1:-functions.exec_command}"
 command_text="${2:-pnpm --filter web test}"
@@ -14,5 +15,10 @@ payload=$(cat <<EOF
 EOF
 )
 
+if ! [[ -x "${ps_runner}" ]]; then
+  echo "missing PowerShell runner: ${ps_runner}" >&2
+  exit 1
+fi
+
 printf '%s' "${payload}" |
-  CODEX_HOOK_CWD="${cwd_path}" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${hooks_dir}/main.ps1" -Action approval
+  CODEX_HOOK_CWD="${cwd_path}" "${ps_runner}" -NoProfile -ExecutionPolicy Bypass -File "${hooks_dir}/main.ps1" -Action approval

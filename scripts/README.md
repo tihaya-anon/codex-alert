@@ -33,7 +33,9 @@ Use logging while developing the hook:
 ## Demo Approval UI
 
 Trigger the overlay directly from this repository without waiting for a real
-Codex approval:
+Codex approval.
+
+From WSL, the bash wrappers require Windows binary interop.
 
 ```bash
 ./demo_approval.sh
