@@ -249,8 +249,9 @@ try {
   $window.Topmost = $true
   $window.ShowInTaskbar = $false
   $window.ShowActivated = $false
+  $window.WindowStartupLocation = "Manual"
   $window.SizeToContent = "WidthAndHeight"
-  $window.Opacity = $inactiveOpacity
+  $window.Opacity = 0.0
 
   if ($IconPath -and (Test-Path $IconPath)) {
     try {
@@ -362,6 +363,26 @@ try {
     }
   }
 
+  function Get-DefaultWindowPosition {
+    param(
+      [double]$WindowWidth,
+      [double]$WindowHeight
+    )
+
+    $workArea = [Windows.SystemParameters]::WorkArea
+    return [pscustomobject]@{
+      Left = [Math]::Max($workArea.Left + 12, $workArea.Right - $WindowWidth - 18)
+      Top = [Math]::Max($workArea.Top + 12, $workArea.Bottom - $WindowHeight - 18)
+    }
+  }
+
+  function Measure-OverlayWindow {
+    $availableSize = New-Object Windows.Size([double]::PositiveInfinity, [double]::PositiveInfinity)
+    $window.Measure($availableSize)
+    $window.Arrange((New-Object Windows.Rect(0, 0, $window.DesiredSize.Width, $window.DesiredSize.Height)))
+    $window.UpdateLayout()
+  }
+
   function Move-OverlayWindow {
     if (-not [double]::IsNaN($script:PreferredLeft) -and -not [double]::IsNaN($script:PreferredTop)) {
       $position = Get-ClampedWindowPosition -Left $script:PreferredLeft -Top $script:PreferredTop
@@ -370,10 +391,9 @@ try {
       return
     }
 
-    $workArea = [Windows.SystemParameters]::WorkArea
-    $window.UpdateLayout()
-    $window.Left = [Math]::Max($workArea.Left + 12, $workArea.Right - $window.ActualWidth - 18)
-    $window.Top = [Math]::Max($workArea.Top + 12, $workArea.Bottom - $window.ActualHeight - 18)
+    $position = Get-DefaultWindowPosition -WindowWidth $window.ActualWidth -WindowHeight $window.ActualHeight
+    $window.Left = $position.Left
+    $window.Top = $position.Top
   }
 
   function Save-CurrentWindowPosition {
@@ -432,9 +452,13 @@ try {
     }
 
     if (-not $window.IsVisible) {
+      Measure-OverlayWindow
+      Move-OverlayWindow
       $window.Show()
+      $window.Opacity = $inactiveOpacity
+    } else {
+      Move-OverlayWindow
     }
-    Move-OverlayWindow
     Set-InactiveWindowOpacity
   }
 
