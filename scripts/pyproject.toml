@@ -1,7 +1,7 @@
 [project]
 name = "scripts"
 version = "0.1.0"
-description = "Add your description here"
+description = "Utilities for Codex hook assets and local overlay development"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
